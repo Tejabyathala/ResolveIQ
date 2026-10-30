@@ -1,0 +1,94 @@
+
+# ResolveIQ Business Rules Configuration
+# Version: 1.0
+
+project:
+  name: ResolveIQ
+  version: "1.0"
+
+generation:
+  seed: 20261022
+  reference_datetime: "2026-10-22T00:00:00Z"
+  currency: INR
+
+  scale:
+    customers: 5000
+    products: 500
+    orders: 8000
+    complaints: 2000
+    messages: 6000
+
+# Complaint priority configuration
+priority:
+  levels:
+    P1: 1
+    P2: 2
+    P3: 3
+    P4: 4
+
+  safety_override: P1
+  high_value_threshold_paise: 5000000
+  vulnerable_customer_escalation: true
+  repeat_complaint_escalation: true
+
+# SLA targets are measured in elapsed minutes.
+sla:
+  calendar: "24/7"
+
+  targets:
+    P1:
+      first_response_minutes: 15
+      resolution_minutes: 240
+
+    P2:
+      first_response_minutes: 60
+      resolution_minutes: 480
+
+    P3:
+      first_response_minutes: 240
+      resolution_minutes: 1440
+
+    P4:
+      first_response_minutes: 480
+      resolution_minutes: 4320
+
+  pause_statuses:
+    - PENDING_CUSTOMER
+    - PENDING_APPROVAL
+
+# Repeat complaint detection
+repeat_complaints:
+  lookback_days: 30
+
+# Refund approval
+approvals:
+  refund_threshold_paise: 1000000
+  safety_resolution_requires_approval: true
+
+# Category-to-team routing
+routing:
+  CAT-001: SAFETY_RESPONSE
+  CAT-002: PRODUCT_SUPPORT
+  CAT-003: DELIVERY_OPERATIONS
+  CAT-004: DELIVERY_OPERATIONS
+  CAT-005: BILLING
+  CAT-006: BILLING
+  CAT-007: ORDER_SUPPORT
+  CAT-008: DIGITAL_SUPPORT
+  CAT-009: CUSTOMER_CARE
+  CAT-010: CUSTOMER_CARE
+
+  assignment_strategy: lowest_active_workload
+  tie_breaker: agent_id_ascending
+
+# Complaint lifecycle
+statuses:
+  - NEW
+  - TRIAGED
+  - ASSIGNED
+  - IN_PROGRESS
+  - PENDING_CUSTOMER
+  - PENDING_APPROVAL
+  - RESOLVED
+  - REOPENED
+  - CLOSED
