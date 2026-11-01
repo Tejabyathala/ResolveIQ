@@ -214,3 +214,86 @@ def resume_complaint_clocks(
         if owns_connection:
             connection.commit()
         return resumed_count
+
+
+def stop_complaint_clocks(
+    complaint_id,
+    stopped_at,
+    reason,
+    actor_agent_id=None,
+    db=None,
+):
+    rules = load_business_rules()
+
+    reference_datetime = datetime.fromisoformat(
+        rules["generation"]["reference_datetime"].replace("Z", "+00:00")
+    )
+
+    validate_event_time(stopped_at, reference_datetime)
+
+    owns_connection = db is None
+
+    connection_context = (
+        closing(get_connection())
+        if owns_connection
+        else nullcontext(db)
+    )
+
+    with connection_context as connection:
+
+        clocks = connection.execute("""
+            SELECT sla_clock_id, clock_status
+            FROM sla_clock
+            WHERE complaint_id = ?
+        """, (complaint_id,)).fetchall()
+
+        if len(clocks) != 2:
+            raise ValueError("Expected exactly two SLA clocks.")
+
+        stopped_count = 0
+
+        for clock_id, status in clocks:
+
+            if status == "STOPPED":
+                raise ValueError(
+                    f"SLA clock {clock_id} is already stopped."
+                )
+
+            event_count = connection.execute("""
+                SELECT COUNT(*)
+                FROM sla_event
+                WHERE sla_clock_id = ?
+            """, (clock_id,)).fetchone()[0]
+
+            event_id = f"SLAE-{clock_id}-{event_count + 1:03d}"
+
+            connection.execute("""
+                INSERT INTO sla_event (
+                    sla_event_id,
+                    sla_clock_id,
+                    event_type,
+                    event_at,
+                    reason,
+                    actor_agent_id
+                )
+                VALUES (?, ?, 'STOP', ?, ?, ?)
+            """, (
+                event_id,
+                clock_id,
+                stopped_at.isoformat(),
+                reason,
+                actor_agent_id,
+            ))
+
+            connection.execute("""
+                UPDATE sla_clock
+                SET clock_status = 'STOPPED'
+                WHERE sla_clock_id = ?
+            """, (clock_id,))
+
+            stopped_count += 1
+
+        if owns_connection:
+            connection.commit()
+
+        return stopped_count

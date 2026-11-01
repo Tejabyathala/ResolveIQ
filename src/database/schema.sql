@@ -362,18 +362,30 @@ CREATE TABLE IF NOT EXISTS complaint_status_event (
 CREATE TABLE IF NOT EXISTS resolution (
     resolution_id TEXT PRIMARY KEY,
     complaint_id TEXT NOT NULL,
+
     resolution_type TEXT NOT NULL
         CHECK (resolution_type IN (
             'REFUND', 'REPLACEMENT', 'REPAIR',
             'INFORMATION', 'REJECTED'
         )),
+
     resolution_notes TEXT NOT NULL,
-    resolved_at TEXT NOT NULL,
+    resolved_at TEXT,
+
     approved_by_agent_id TEXT,
+
     resolution_status TEXT NOT NULL
         CHECK (resolution_status IN (
             'PROPOSED', 'APPROVED', 'COMPLETED', 'REJECTED'
         )),
+
+    refund_amount_paise INTEGER
+        CHECK (
+            refund_amount_paise IS NULL
+            OR refund_amount_paise > 0
+        ),
+
+    created_at TEXT NOT NULL,
 
     FOREIGN KEY (complaint_id)
         REFERENCES complaint(complaint_id)
@@ -381,9 +393,16 @@ CREATE TABLE IF NOT EXISTS resolution (
 
     FOREIGN KEY (approved_by_agent_id)
         REFERENCES agent(agent_id)
-        ON DELETE RESTRICT
-);
+        ON DELETE RESTRICT,
 
+    CHECK (
+        (resolution_type = 'REFUND'
+            AND refund_amount_paise IS NOT NULL)
+        OR
+        (resolution_type != 'REFUND'
+            AND refund_amount_paise IS NULL)
+    )
+);
 -- 17. Survey
 CREATE TABLE IF NOT EXISTS survey (
     survey_id TEXT PRIMARY KEY,

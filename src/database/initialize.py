@@ -1,5 +1,5 @@
-
 from pathlib import Path
+from contextlib import closing
 
 from src.database.connection import get_connection
 
@@ -11,7 +11,7 @@ SCHEMA_PATH = BASE_DIR / "src" / "database" / "schema.sql"
 def initialize_database():
     """Create all database tables from schema.sql."""
 
-    with get_connection() as connection:
+    with closing(get_connection()) as connection:
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
 
         connection.executescript(schema)

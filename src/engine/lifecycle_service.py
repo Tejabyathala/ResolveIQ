@@ -1,5 +1,5 @@
 from datetime import datetime
-from contextlib import closing
+from contextlib import closing,nullcontext
 
 from src.database.connection import get_connection
 from src.database.config_loader import load_business_rules
@@ -69,9 +69,24 @@ def transition_complaint(
     changed_at,
     reason,
     actor_agent_id=None,
+    db=None,
 ):
-    with closing(get_connection()) as connection:
-        with connection:
+    owns_connection = db is None
+
+    connection_context = (
+        closing(get_connection())
+        if owns_connection
+        else nullcontext(db)
+    )
+
+    with connection_context as connection:
+        transaction_context = (
+            connection
+            if owns_connection
+            else nullcontext(connection)
+        )
+
+        with transaction_context:
 
             complaint = connection.execute("""
                 SELECT current_status
@@ -86,17 +101,14 @@ def transition_complaint(
 
             current_status = complaint[0]
 
-            # Validate transition sequence.
             validate_transition(current_status, new_status)
 
-            # Validate transition timestamp.
             validate_transition_time(
                 connection,
                 complaint_id,
                 changed_at,
             )
 
-            # Step 2: Check whether SLA clocks need pausing or resuming.
             entering_pending = (
                 new_status in PENDING_STATUSES
                 and current_status not in PENDING_STATUSES
@@ -107,7 +119,6 @@ def transition_complaint(
                 and new_status not in PENDING_STATUSES
             )
 
-            # Step 3: Record corresponding SLA events.
             if entering_pending:
                 pause_complaint_clocks(
                     complaint_id,
@@ -126,7 +137,6 @@ def transition_complaint(
                     db=connection,
                 )
 
-            # Step 4: Create a unique status event ID.
             event_count = connection.execute("""
                 SELECT COUNT(*)
                 FROM complaint_status_event
@@ -134,7 +144,6 @@ def transition_complaint(
 
             status_event_id = f"STSE-{event_count + 1:07d}"
 
-            # Step 5: Insert status history.
             connection.execute("""
                 INSERT INTO complaint_status_event (
                     status_event_id,
@@ -156,16 +165,20 @@ def transition_complaint(
                 reason,
             ))
 
-            # Step 6: Update current complaint status.
             connection.execute("""
                 UPDATE complaint
                 SET current_status = ?
                 WHERE complaint_id = ?
             """, (new_status, complaint_id))
 
-            return {
+            result = {
                 "complaint_id": complaint_id,
                 "previous_status": current_status,
                 "current_status": new_status,
                 "status_event_id": status_event_id,
             }
+
+            if owns_connection:
+                connection.commit()
+
+            return result
